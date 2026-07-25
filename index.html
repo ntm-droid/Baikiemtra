@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Chấm điểm trắc nghiệm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Noto+Serif:wght@600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --paper: #f3ede1;
@@ -13,8 +16,8 @@
     --red-pen: #b3432b;
     --green-ok: #3d7a52;
     --gold: #c99a3f;
-    --font-display: "Georgia", "Times New Roman", serif;
-    --font-mono: "Courier New", Courier, monospace;
+    --font-display: "Noto Serif", "Georgia", serif;
+    --font-mono: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
   }
   * { box-sizing: border-box; }
   body{
@@ -343,44 +346,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <script>
-/* ==========================================================================
-   1) DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY
-   ========================================================================== */
-const firebaseConfig = {
-  apiKey: "AIzaSyAaCSXW3FIb7a2lOpdECzBrrI-3DDXluHE",
-  authDomain: "baikiemtra-6c5cc.firebaseapp.com",
-  projectId: "baikiemtra-6c5cc",
-  storageBucket: "baikiemtra-6c5cc.firebasestorage.app",
-  messagingSenderId: "705887491141",
-  appId: "1:705887491141:web:22fe11fba56e749f153f2c"
-};
-
-/* ==========================================================================
-   2) ĐẶT MẬT KHẨU GIÁO VIÊN
-   ========================================================================== */
-const TEACHER_PASSWORD = "doimatkhaunay";
-
-/* ========================================================================== */
-
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-
-const CHOICES = ["A","B","C","D"];
 const $ = (id) => document.getElementById(id);
 
-let quizQuestions = [];   // [{text, options:{A,B,C,D}, correct}, ...] - từ Firestore
-let studentAnswers = [];  // đáp án học sinh đang chọn
-let isTeacherUnlocked = false;
-
-function setConnStatus(state, text){
-  const dot = $("conn-dot");
-  dot.classList.remove("ok","err");
-  if (state === "ok") dot.classList.add("ok");
-  if (state === "err") dot.classList.add("err");
-  $("conn-text").textContent = text;
-}
-
-// ---------- Mở khóa giáo viên ----------
+// ---------- Các nút giao diện luôn hoạt động, không phụ thuộc Firebase ----------
 $("btn-open-teacher").addEventListener("click", () => {
   $("teacher-modal").classList.add("show");
   $("teacher-password").value = "";
@@ -404,6 +372,47 @@ $("btn-confirm-teacher").addEventListener("click", () => {
     alert("Sai mật khẩu giáo viên.");
   }
 });
+
+/* ==========================================================================
+   1) DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY
+   ========================================================================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyAaCSXW3FIb7a2lOpdECzBrrI-3DDXluHE",
+  authDomain: "baikiemtra-6c5cc.firebaseapp.com",
+  projectId: "baikiemtra-6c5cc",
+  storageBucket: "baikiemtra-6c5cc.firebasestorage.app",
+  messagingSenderId: "705887491141",
+  appId: "1:705887491141:web:22fe11fba56e749f153f2c"
+};
+
+/* ==========================================================================
+   2) ĐẶT MẬT KHẨU GIÁO VIÊN
+   ========================================================================== */
+const TEACHER_PASSWORD = "doimatkhaunay";
+
+/* ========================================================================== */
+
+let db = null;
+let quizQuestions = [];   // [{text, options:{A,B,C,D}, correct}, ...] - từ Firestore
+let studentAnswers = [];  // đáp án học sinh đang chọn
+let isTeacherUnlocked = false;
+const CHOICES = ["A","B","C","D"];
+
+function setConnStatus(state, text){
+  const dot = $("conn-dot");
+  dot.classList.remove("ok","err");
+  if (state === "ok") dot.classList.add("ok");
+  if (state === "err") dot.classList.add("err");
+  $("conn-text").textContent = text;
+}
+
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+}catch(e){
+  console.error("Lỗi khởi tạo Firebase:", e);
+  setConnStatus("err", "Lỗi cấu hình Firebase — kiểm tra lại firebaseConfig");
+}
 
 // ---------- Tạo bảng soạn câu hỏi (giáo viên) ----------
 function generateKeyGrid(prefillData){
@@ -467,6 +476,7 @@ function escapeAttr(s){
 }
 
 async function saveKey(){
+  if (!db){ alert("Chưa kết nối được Firebase — kiểm tra lại firebaseConfig trong code."); return; }
   const grid = $("key-grid");
   const draft = grid._draft || [];
   if (draft.length === 0){ alert("Chưa có câu hỏi nào."); return; }
@@ -492,32 +502,34 @@ async function saveKey(){
 }
 
 // ---------- Lắng nghe đề bài real-time ----------
-db.collection("quiz").doc("answerKey").onSnapshot(
-  (doc) => {
-    setConnStatus("ok", "Đã kết nối");
-    if (doc.exists){
-      const data = doc.data();
-      quizQuestions = data.questions || [];
-      if (quizQuestions.length > 0){
-        renderStudentGrid();
-        $("student-card").style.display = "block";
-        $("no-key-card").style.display = "none";
+if (db){
+  db.collection("quiz").doc("answerKey").onSnapshot(
+    (doc) => {
+      setConnStatus("ok", "Đã kết nối");
+      if (doc.exists){
+        const data = doc.data();
+        quizQuestions = data.questions || [];
+        if (quizQuestions.length > 0){
+          renderStudentGrid();
+          $("student-card").style.display = "block";
+          $("no-key-card").style.display = "none";
+        }
+        if (isTeacherUnlocked){
+          $("num-questions").value = quizQuestions.length;
+          generateKeyGrid(quizQuestions);
+        }
+      } else {
+        quizQuestions = [];
+        $("student-card").style.display = "none";
+        $("no-key-card").style.display = "block";
       }
-      if (isTeacherUnlocked){
-        $("num-questions").value = quizQuestions.length;
-        generateKeyGrid(quizQuestions);
-      }
-    } else {
-      quizQuestions = [];
-      $("student-card").style.display = "none";
-      $("no-key-card").style.display = "block";
+    },
+    (err) => {
+      console.error(err);
+      setConnStatus("err", "Lỗi kết nối Firebase — kiểm tra cấu hình");
     }
-  },
-  (err) => {
-    console.error(err);
-    setConnStatus("err", "Lỗi kết nối Firebase — kiểm tra cấu hình");
-  }
-);
+  );
+}
 
 // ---------- Bài làm học sinh ----------
 function renderStudentGrid(){
@@ -587,6 +599,7 @@ function checkLocalLockOnLoad(){
 
 // ---------- Chấm điểm & nộp bài ----------
 async function gradeStudent(){
+  if (!db){ alert("Chưa kết nối được Firebase — kiểm tra lại firebaseConfig trong code."); return; }
   if (!quizQuestions.length){ alert("Giáo viên chưa thiết lập đề bài."); return; }
   if (studentAnswers.some(v => !v)){
     alert("Vui lòng chọn đáp án cho tất cả các câu trước khi nộp bài.");
@@ -663,11 +676,13 @@ async function gradeStudent(){
 // ---------- Bảng điểm chung ----------
 let latestSubmissions = [];
 
-db.collection("submissions").orderBy("score", "desc").onSnapshot((snapshot) => {
-  latestSubmissions = [];
-  snapshot.forEach(doc => latestSubmissions.push({ id: doc.id, ...doc.data() }));
-  renderHistory();
-}, (err) => console.error(err));
+if (db){
+  db.collection("submissions").orderBy("score", "desc").onSnapshot((snapshot) => {
+    latestSubmissions = [];
+    snapshot.forEach(doc => latestSubmissions.push({ id: doc.id, ...doc.data() }));
+    renderHistory();
+  }, (err) => console.error(err));
+}
 
 function renderHistory(){
   const body = $("history-body");
@@ -710,6 +725,7 @@ $("btn-export-csv").addEventListener("click", () => {
 });
 
 $("btn-teacher-clear-history").addEventListener("click", async () => {
+  if (!db){ alert("Chưa kết nối được Firebase — kiểm tra lại firebaseConfig trong code."); return; }
   if (!isTeacherUnlocked){
     alert("Chỉ giáo viên mới được xóa bảng điểm. Bấm 'Mở khóa (dành cho giáo viên)' ở trên trước.");
     return;

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Chấm Điểm Trắc Nghiệm</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 30px auto; padding: 20px; line-height: 1.6; }
+        .question { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { background-color: #28a745; color: white; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 5px; }
+        button:hover { background-color: #218838; }
+        #result { margin-top: 20px; font-weight: bold; font-size: 18px; color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h2>Bài Kiểm Tra Tự Động Chấm Điểm</h2>
+    <p>Sinh viên nhập đáp án vào các ô bên dưới rồi bấm <b>Nộp bài</b>.</p>
+
+    <form id="quizForm">
+        <!-- Câu 1 -->
+        <div class="question">
+            <p><b>Câu 1:</b> Thủ đô của Việt Nam là gì?</p>
+            <label>Đáp án của bạn: </label>
+            <input type="text" id="q1" placeholder="Nhập A, B, C hoặc D" style="text-transform: uppercase;">
+        </div>
+
+        <!-- Câu 2 -->
+        <div class="question">
+            <p><b>Câu 2:</b> 2 + 2 bằng mấy?</p>
+            <label>Đáp án của bạn: </label>
+            <input type="text" id="q2" placeholder="Nhập đáp án" style="text-transform: uppercase;">
+        </div>
+
+        <button type="button" onclick="chamDiem()">Nộp bài & Chấm điểm</button>
+    </form>
+
+    <div id="result"></div>
+
+    <script>
+        function chamDiem() {
+            // ĐÁP ÁN ĐÚNG CỦA BẠN ĐẶT Ở ĐÂY
+            const dapAnDung = {
+                q1: "A", // Giả sử câu 1 đáp án A
+                q2: "4"  // Giả sử câu 2 đáp án 4
+            };
+
+            let diem = 0;
+            let tongSoCau = 2;
+
+            // Lấy đáp án sinh viên nhập
+            let ans1 = document.getElementById("q1").value.trim().toUpperCase();
+            let ans2 = document.getElementById("q2").value.trim().toUpperCase();
+
+            // So sánh đáp án
+            if (ans1 === dapAnDung.q1) diem++;
+            if (ans2 === dapAnDung.q2) diem++;
+
+            // Tính điểm hệ 10
+            let diemHe10 = (diem / tongSoCau) * 10;
+
+            // Hiển thị kết quả
+            document.getElementById("result").innerHTML = 
+                `Kết quả: Bạn làm đúng ${diem}/${tongSoCau} câu.<br>Điểm số: <span style="color:red;">${diemHe10} / 10 điểm</span>.`;
+        }
+    </script>
+</body>
+</html>

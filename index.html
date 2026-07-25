@@ -301,7 +301,7 @@
 
   <!-- BÀI LÀM HỌC SINH -->
   <section class="card" id="student-card" style="display:none;">
-    <h2><span class="tag">Bài làm của bạn</span></h2>
+    <h2><span class="tag">Bài làm của bạn</span> <span id="exam-code-display" style="font-size:0.85rem; color: var(--ink-soft); font-weight:normal;"></span></h2>
     <div class="row">
       <div>
         <label for="student-name">Tên của bạn</label>
@@ -334,7 +334,7 @@
     <div id="history-empty" class="empty-note">Chưa có ai nộp bài.</div>
     <table class="history" id="history-table" style="display:none;">
       <thead>
-        <tr><th>#</th><th>Học sinh</th><th>Đúng / Tổng</th><th>Điểm (/10)</th></tr>
+        <tr><th>#</th><th>Học sinh</th><th>Mã đề</th><th>Đúng / Tổng</th><th>Điểm (/10)</th></tr>
       </thead>
       <tbody id="history-body"></tbody>
     </table>
@@ -595,22 +595,59 @@ $("btn-enter-exam").addEventListener("click", () => {
   }
 });
 
+// ---------- Xáo trộn câu hỏi & đáp án theo từng phiên (tạo "mã đề") ----------
+function shuffleArray(arr){
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function getOrCreateShuffle(n){
+  const stored = sessionStorage.getItem("quiz-shuffle");
+  if (stored){
+    try{
+      const parsed = JSON.parse(stored);
+      if (parsed.n === n && Array.isArray(parsed.order) && parsed.order.length === n){
+        return parsed;
+      }
+    }catch(e){ /* rơi xuống tạo mới */ }
+  }
+  const order = shuffleArray([...Array(n).keys()]);
+  const optionOrders = [];
+  for (let i = 0; i < n; i++){
+    optionOrders.push(shuffleArray(CHOICES));
+  }
+  const code = String(100 + Math.floor(Math.random() * 900)); // mã đề 3 chữ số, vd 132
+  const shuffle = { n, order, optionOrders, code };
+  sessionStorage.setItem("quiz-shuffle", JSON.stringify(shuffle));
+  return shuffle;
+}
+
 // ---------- Bài làm học sinh ----------
 function renderStudentGrid(){
   const grid = $("student-grid");
   grid.innerHTML = "";
   studentAnswers = new Array(quizQuestions.length).fill(null);
 
-  quizQuestions.forEach((q, i) => {
+  const shuffle = getOrCreateShuffle(quizQuestions.length);
+  $("exam-code-display").textContent = "— Mã đề: " + shuffle.code;
+
+  shuffle.order.forEach((originalIdx, displayPos) => {
+    const q = quizQuestions[originalIdx];
+    const optOrder = shuffle.optionOrders[originalIdx]; // thứ tự key gốc sẽ hiển thị (vd ["C","A","D","B"])
+
     const block = document.createElement("div");
     block.className = "sq-block";
-    block.dataset.index = i;
+    block.dataset.index = originalIdx;
     block.innerHTML = `
-      <div class="sq-question"><span class="sq-num">Câu ${i+1}.</span>${escapeHtml(q.text)}</div>
-      ${CHOICES.map(c => `
-        <div class="sq-option" data-choice="${c}">
-          <div class="letter">${c}</div>
-          <div class="opt-label">${escapeHtml(q.options[c])}</div>
+      <div class="sq-question"><span class="sq-num">Câu ${displayPos+1}.</span>${escapeHtml(q.text)}</div>
+      ${optOrder.map((origKey, slot) => `
+        <div class="sq-option" data-choice="${origKey}">
+          <div class="letter">${CHOICES[slot]}</div>
+          <div class="opt-label">${escapeHtml(q.options[origKey])}</div>
         </div>
       `).join("")}
     `;
@@ -620,7 +657,7 @@ function renderStudentGrid(){
       opt.addEventListener("click", () => {
         block.querySelectorAll(".sq-option").forEach(o => o.classList.remove("selected","correct-mark","wrong-mark"));
         opt.classList.add("selected");
-        studentAnswers[i] = opt.dataset.choice;
+        studentAnswers[originalIdx] = opt.dataset.choice;
       });
     });
   });
@@ -727,16 +764,18 @@ async function gradeStudent(){
 
   const total = quizQuestions.length;
   const score = Math.round((correctCount / total) * 10 * 100) / 100;
+  const shuffle = getOrCreateShuffle(quizQuestions.length);
 
   $("result-name").textContent = "— " + name;
   $("score-number").textContent = (score % 1 === 0) ? score.toFixed(0) : score.toFixed(2);
-  $("score-meta").innerHTML = `Đúng: <strong>${correctCount}</strong> / ${total} câu<br>Tỉ lệ: ${(correctCount/total*100).toFixed(1)}%`;
+  $("score-meta").innerHTML = `Mã đề: <strong>${shuffle.code}</strong><br>Đúng: <strong>${correctCount}</strong> / ${total} câu<br>Tỉ lệ: ${(correctCount/total*100).toFixed(1)}%`;
   $("result-card").style.display = "block";
   $("result-card").scrollIntoView({behavior:"smooth", block:"nearest"});
 
   try{
     await db.collection("submissions").add({
       name, nameLower: name.toLowerCase(), correct: correctCount, total, score,
+      examCode: shuffle.code,
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
     lockAfterSubmit(name);
@@ -776,7 +815,7 @@ function renderHistory(){
     else if (i === 1) tr.classList.add("rank-2");
     else if (i === 2) tr.classList.add("rank-3");
     const scoreText = (h.score % 1 === 0) ? h.score.toFixed(0) : h.score.toFixed(2);
-    tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(h.name)}</td><td>${h.correct}/${h.total}</td><td class="score-cell">${scoreText}</td>`;
+    tr.innerHTML = `<td>${i+1}</td><td>${escapeHtml(h.name)}</td><td>${escapeHtml(h.examCode || "—")}</td><td>${h.correct}/${h.total}</td><td class="score-cell">${scoreText}</td>`;
     body.appendChild(tr);
   });
 }
@@ -787,8 +826,8 @@ function escapeHtml(s){
 
 $("btn-export-csv").addEventListener("click", () => {
   if (!latestSubmissions.length) return;
-  const rows = [["Học sinh","Đúng","Tổng số câu","Điểm /10"]];
-  latestSubmissions.forEach(h => rows.push([h.name, h.correct, h.total, h.score]));
+  const rows = [["Học sinh","Mã đề","Đúng","Tổng số câu","Điểm /10"]];
+  latestSubmissions.forEach(h => rows.push([h.name, h.examCode || "", h.correct, h.total, h.score]));
   const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(",")).join("\n");
   const blob = new Blob(["\ufeff" + csv], {type:"text/csv;charset=utf-8;"});
   const url = URL.createObjectURL(blob);

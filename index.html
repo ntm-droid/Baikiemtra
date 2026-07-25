@@ -347,6 +347,7 @@
    1) DÁN CẤU HÌNH FIREBASE CỦA BẠN VÀO ĐÂY
    ========================================================================== */
 const firebaseConfig = {
+ const firebaseConfig = {
   apiKey: "AIzaSyAaCSXW3FIb7a2lOpdECzBrrI-3DDXluHE",
   authDomain: "baikiemtra-6c5cc.firebaseapp.com",
   projectId: "baikiemtra-6c5cc",
@@ -548,6 +549,8 @@ function renderStudentGrid(){
       });
     });
   });
+
+  checkLocalLockOnLoad();
 }
 
 $("btn-clear-student").addEventListener("click", () => {
@@ -559,6 +562,30 @@ $("btn-clear-student").addEventListener("click", () => {
   $("result-card").style.display = "none";
 });
 
+// ---------- Chống nộp bài trùng tên / nộp lại ----------
+function localSubmittedName(){
+  return localStorage.getItem("quiz-submitted-name");
+}
+
+function lockAfterSubmit(name){
+  localStorage.setItem("quiz-submitted-name", name.toLowerCase());
+  $("student-name").disabled = true;
+  document.querySelectorAll("#student-grid .sq-option").forEach(o => {
+    o.style.pointerEvents = "none";
+  });
+  $("btn-grade").disabled = true;
+  $("btn-grade").textContent = "Đã nộp bài";
+  $("btn-clear-student").disabled = true;
+}
+
+function checkLocalLockOnLoad(){
+  const saved = localSubmittedName();
+  if (saved){
+    $("student-name").value = saved;
+    lockAfterSubmit(saved);
+  }
+}
+
 // ---------- Chấm điểm & nộp bài ----------
 async function gradeStudent(){
   if (!quizQuestions.length){ alert("Giáo viên chưa thiết lập đề bài."); return; }
@@ -568,6 +595,34 @@ async function gradeStudent(){
   }
   const name = $("student-name").value.trim();
   if (!name){ alert("Vui lòng nhập tên của bạn."); return; }
+
+  // Chặn nộp lại trên cùng trình duyệt
+  if (localSubmittedName()){
+    alert("Bạn đã nộp bài rồi, không thể làm lại.");
+    return;
+  }
+
+  // Chặn nộp trùng tên (kiểm tra trên Firestore, áp dụng cho cả người dùng thiết bị khác)
+  $("btn-grade").disabled = true;
+  $("btn-grade").textContent = "Đang kiểm tra...";
+  try{
+    const nameLower = name.toLowerCase();
+    const existing = await db.collection("submissions").where("nameLower", "==", nameLower).limit(1).get();
+    if (!existing.empty){
+      alert(`Tên "${name}" đã nộp bài rồi. Nếu đây không phải bạn, vui lòng nhập tên đầy đủ/chính xác hơn để tránh trùng.`);
+      $("btn-grade").disabled = false;
+      $("btn-grade").textContent = "Nộp bài & xem điểm";
+      return;
+    }
+  }catch(e){
+    console.error(e);
+    alert("Không kiểm tra được trạng thái nộp bài (lỗi kết nối). Vui lòng thử lại.");
+    $("btn-grade").disabled = false;
+    $("btn-grade").textContent = "Nộp bài & xem điểm";
+    return;
+  }
+  $("btn-grade").textContent = "Nộp bài & xem điểm";
+  $("btn-grade").disabled = false;
 
   let correctCount = 0;
   document.querySelectorAll("#student-grid .sq-block").forEach(block => {
@@ -596,9 +651,10 @@ async function gradeStudent(){
 
   try{
     await db.collection("submissions").add({
-      name, correct: correctCount, total, score,
+      name, nameLower: name.toLowerCase(), correct: correctCount, total, score,
       timestamp: firebase.firestore.FieldValue.serverTimestamp()
     });
+    lockAfterSubmit(name);
   }catch(e){
     console.error(e);
     alert("Điểm đã tính xong nhưng KHÔNG lưu được vào bảng điểm chung (kiểm tra kết nối mạng / cấu hình Firebase).");

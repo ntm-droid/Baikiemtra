@@ -270,6 +270,12 @@
         </div>
         <button id="btn-generate" type="button">Tạo bảng soạn câu hỏi</button>
       </div>
+      <div class="row">
+        <div>
+          <label for="exam-password">Mật khẩu vào phòng thi (học sinh cần nhập mới làm bài được)</label>
+          <input type="text" id="exam-password" placeholder="Để trống nếu không cần mật khẩu">
+        </div>
+      </div>
       <div id="key-grid"></div>
       <div class="hint" id="key-hint" style="display:none;">
         Với mỗi câu: nhập <strong>nội dung câu hỏi</strong>, nhập <strong>nội dung 4 đáp án</strong>, rồi bấm vào ô vuông cạnh đáp án đúng để đánh dấu ✓. Xong hết thì bấm "Lưu đề bài".
@@ -278,6 +284,19 @@
         <button id="btn-save-key" type="button">Lưu đề bài (áp dụng cho mọi người)</button>
       </div>
     </div>
+  </section>
+
+  <!-- CỔNG VÀO PHÒNG THI -->
+  <section class="card" id="exam-gate-card" style="display:none;">
+    <h2><span class="tag">Phòng thi</span> Nhập mật khẩu để vào làm bài</h2>
+    <div class="row">
+      <div>
+        <label for="exam-password-input">Mật khẩu phòng thi</label>
+        <input type="password" class="narrow" id="exam-password-input" placeholder="Nhập mật khẩu">
+      </div>
+      <button id="btn-enter-exam" type="button">Vào phòng thi</button>
+    </div>
+    <div class="hint" id="exam-gate-error" style="display:none; color: var(--red-pen);">Sai mật khẩu, vui lòng thử lại.</div>
   </section>
 
   <!-- BÀI LÀM HỌC SINH -->
@@ -310,7 +329,7 @@
   </section>
 
   <!-- BẢNG ĐIỂM CHUNG -->
-  <section class="card" id="history-card">
+  <section class="card" id="history-card" style="display:none;">
     <h2><span class="tag">Bảng điểm chung</span> Mọi người đều xem được</h2>
     <div id="history-empty" class="empty-note">Chưa có ai nộp bài.</div>
     <table class="history" id="history-table" style="display:none;">
@@ -324,6 +343,10 @@
       <button class="danger" id="btn-teacher-clear-history" type="button">Xóa toàn bộ bảng điểm (giáo viên)</button>
     </div>
   </section>
+
+  <div class="card" id="history-locked-note">
+    <p class="empty-note">Bảng điểm chung sẽ hiện ra sau khi bạn nộp bài.</p>
+  </div>
 
   <footer>Đề bài và bảng điểm được lưu chung trên Firebase — mọi người truy cập trang đều thấy cùng một dữ liệu, cập nhật theo thời gian thực.</footer>
 </div>
@@ -366,8 +389,11 @@ $("btn-confirm-teacher").addEventListener("click", () => {
     $("btn-open-teacher").style.display = "none";
     if (quizQuestions.length) {
       $("num-questions").value = quizQuestions.length;
+      $("exam-password").value = examPassword;
       generateKeyGrid(quizQuestions);
     }
+    updateExamGate();
+    updateHistoryVisibility();
   } else {
     alert("Sai mật khẩu giáo viên.");
   }
@@ -394,6 +420,7 @@ const TEACHER_PASSWORD = "doimatkhaunay";
 
 let db = null;
 let quizQuestions = [];   // [{text, options:{A,B,C,D}, correct}, ...] - từ Firestore
+let examPassword = "";    // mật khẩu phòng thi hiện tại (rỗng = không cần mật khẩu)
 let studentAnswers = [];  // đáp án học sinh đang chọn
 let isTeacherUnlocked = false;
 const CHOICES = ["A","B","C","D"];
@@ -492,6 +519,7 @@ async function saveKey(){
     await db.collection("quiz").doc("answerKey").set({
       questions: draft,
       numQuestions: draft.length,
+      examPassword: $("exam-password").value.trim(),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     alert("Đã lưu đề bài! Mọi người truy cập trang sẽ thấy bài kiểm tra này.");
@@ -509,18 +537,22 @@ if (db){
       if (doc.exists){
         const data = doc.data();
         quizQuestions = data.questions || [];
+        examPassword = data.examPassword || "";
         if (quizQuestions.length > 0){
           renderStudentGrid();
-          $("student-card").style.display = "block";
           $("no-key-card").style.display = "none";
+          updateExamGate();
         }
         if (isTeacherUnlocked){
           $("num-questions").value = quizQuestions.length;
+          $("exam-password").value = examPassword;
           generateKeyGrid(quizQuestions);
         }
       } else {
         quizQuestions = [];
+        examPassword = "";
         $("student-card").style.display = "none";
+        $("exam-gate-card").style.display = "none";
         $("no-key-card").style.display = "block";
       }
     },
@@ -530,6 +562,38 @@ if (db){
     }
   );
 }
+
+// ---------- Cổng vào phòng thi ----------
+function examSessionKey(){
+  return "exam-unlocked-pw"; // lưu theo tab (sessionStorage), mất khi đóng tab
+}
+
+function isExamUnlocked(){
+  if (isTeacherUnlocked) return true;
+  if (!examPassword) return true; // không đặt mật khẩu -> ai cũng vào được
+  return sessionStorage.getItem(examSessionKey()) === examPassword;
+}
+
+function updateExamGate(){
+  if (isExamUnlocked()){
+    $("exam-gate-card").style.display = "none";
+    $("student-card").style.display = "block";
+  } else {
+    $("exam-gate-card").style.display = "block";
+    $("student-card").style.display = "none";
+  }
+}
+
+$("btn-enter-exam").addEventListener("click", () => {
+  const entered = $("exam-password-input").value;
+  if (entered === examPassword){
+    sessionStorage.setItem(examSessionKey(), entered);
+    $("exam-gate-error").style.display = "none";
+    updateExamGate();
+  } else {
+    $("exam-gate-error").style.display = "block";
+  }
+});
 
 // ---------- Bài làm học sinh ----------
 function renderStudentGrid(){
@@ -587,6 +651,7 @@ function lockAfterSubmit(name){
   $("btn-grade").disabled = true;
   $("btn-grade").textContent = "Đã nộp bài";
   $("btn-clear-student").disabled = true;
+  updateHistoryVisibility();
 }
 
 function checkLocalLockOnLoad(){
@@ -595,6 +660,14 @@ function checkLocalLockOnLoad(){
     $("student-name").value = saved;
     lockAfterSubmit(saved);
   }
+  updateHistoryVisibility();
+}
+
+// ---------- Hiển thị bảng điểm chung: giáo viên luôn xem được, học sinh phải nộp bài xong ----------
+function updateHistoryVisibility(){
+  const canView = isTeacherUnlocked || !!localSubmittedName();
+  $("history-card").style.display = canView ? "block" : "none";
+  $("history-locked-note").style.display = canView ? "none" : "block";
 }
 
 // ---------- Chấm điểm & nộp bài ----------

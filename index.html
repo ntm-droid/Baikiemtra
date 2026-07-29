@@ -271,7 +271,7 @@
             <label for="num-questions">Số câu hỏi</label>
             <input type="number" class="narrow" id="num-questions" min="1" max="200" value="10">
           </div>
-          <button id="btn-generate" type="button">Tạo bảng soạn câu hỏi</button>
+          <button id="btn-generate" type="button">Tạo bảng soạn câu hỏi (thủ công)</button>
         </div>
         <div class="row">
           <div>
@@ -279,6 +279,27 @@
             <input type="text" id="exam-password" placeholder="Để trống nếu không cần mật khẩu">
           </div>
         </div>
+
+        <div class="hint" style="margin-bottom:6px;">
+          <strong>Dán nhanh câu hỏi (tùy chọn):</strong> dán cả loạt câu hỏi theo mẫu bên dưới, hệ thống sẽ tự điền vào bảng — không cần gõ từng ô.
+        </div>
+        <textarea id="bulk-import-textarea" rows="8" style="width:100%; font-family: var(--font-mono); font-size:0.85rem; padding:10px; border:1px solid var(--ink-soft); background:#fffdf8; border-radius:2px;" placeholder="Câu 1. Thủ đô của Việt Nam là gì?
+A. Hà Nội
+B. TP.HCM
+C. Đà Nẵng
+D. Huế
+Đáp án: A
+
+Câu 2. 2 + 2 = ?
+A. 3
+B. 4
+C. 5
+D. 6
+Đáp án: B"></textarea>
+        <div class="actions-bar">
+          <button class="secondary" id="btn-bulk-import" type="button">Phân tích & điền vào bảng</button>
+        </div>
+
         <div id="key-grid"></div>
         <div class="hint" id="key-hint" style="display:none;">
           Với mỗi câu: nhập <strong>nội dung câu hỏi</strong>, nhập <strong>nội dung 4 đáp án</strong>, rồi bấm vào ô vuông cạnh đáp án đúng để đánh dấu ✓.
@@ -635,6 +656,79 @@ $("btn-new-quiz").addEventListener("click", openComposerNew);
 $("btn-generate").addEventListener("click", () => generateKeyGrid(null));
 $("btn-save-key").addEventListener("click", saveQuiz);
 $("btn-cancel-compose").addEventListener("click", () => { $("composer-area").style.display = "none"; });
+
+// ---------- Dán nhanh câu hỏi hàng loạt ----------
+function parseBulkQuestions(raw){
+  const lines = raw.split(/\r?\n/);
+  const questions = [];
+  let current = null;
+
+  const qStartRegex = /^\s*(?:(?:Câu|Cau|Question)\s*)?\d+\s*[\.:)]\s*(.*)$/i;
+  const optRegex = /^\s*(\*)?\s*([A-Da-d])\s*[\.\):]\s*(.*)$/;
+  const ansRegex = /^\s*(?:Đáp án|Dap an|Answer|ĐA|DA)\s*[:\-]?\s*([A-Da-d])\s*$/i;
+
+  for (const rawLine of lines){
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const qMatch = line.match(qStartRegex);
+    if (qMatch){
+      if (current) questions.push(current);
+      current = { text: qMatch[1].trim(), options: {A:"",B:"",C:"",D:""}, correct: null };
+      continue;
+    }
+
+    const optMatch = line.match(optRegex);
+    if (optMatch && current){
+      const letter = optMatch[2].toUpperCase();
+      const text = optMatch[3].trim();
+      current.options[letter] = text;
+      if (optMatch[1] === "*") current.correct = letter;
+      continue;
+    }
+
+    const ansMatch = line.match(ansRegex);
+    if (ansMatch && current){
+      current.correct = ansMatch[1].toUpperCase();
+      continue;
+    }
+
+    // Dòng không khớp mẫu nào -> có thể là câu hỏi viết tiếp dòng 2
+    if (current && !current.options.A && !current.options.B && !current.options.C && !current.options.D){
+      current.text += (current.text ? " " : "") + line;
+    }
+  }
+  if (current) questions.push(current);
+  return questions;
+}
+
+$("btn-bulk-import").addEventListener("click", () => {
+  const raw = $("bulk-import-textarea").value;
+  if (!raw.trim()){ alert("Vui lòng dán nội dung câu hỏi vào ô phía trên trước."); return; }
+
+  const parsed = parseBulkQuestions(raw);
+  if (parsed.length === 0){
+    alert("Không nhận diện được câu hỏi nào. Kiểm tra lại định dạng (xem mẫu trong ô placeholder).");
+    return;
+  }
+
+  const warnings = [];
+  parsed.forEach((q, i) => {
+    if (!q.text) warnings.push(`Câu ${i+1}: thiếu nội dung câu hỏi`);
+    CHOICES.forEach(c => { if (!q.options[c]) warnings.push(`Câu ${i+1}: thiếu đáp án ${c}`); });
+    if (!q.correct) warnings.push(`Câu ${i+1}: chưa xác định đáp án đúng (thêm dòng "Đáp án: X" hoặc đặt dấu * trước đáp án đúng)`);
+  });
+
+  $("num-questions").value = parsed.length;
+  generateKeyGrid(parsed);
+
+  if (warnings.length){
+    alert(`Đã điền ${parsed.length} câu vào bảng, nhưng có ${warnings.length} chỗ cần bạn kiểm tra lại:\n\n` +
+      warnings.slice(0, 12).join("\n") + (warnings.length > 12 ? "\n... và các lỗi khác." : ""));
+  } else {
+    alert(`Đã điền thành công ${parsed.length} câu hỏi! Kiểm tra lại rồi bấm "Lưu bài kiểm tra".`);
+  }
+});
 
 // ---------- Lắng nghe danh sách bài kiểm tra real-time ----------
 if (db){
